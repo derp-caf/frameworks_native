@@ -145,11 +145,8 @@ Layer::Layer(const LayerCreationArgs& args)
 
     mCallingPid = args.callingPid;
     mCallingUid = args.callingUid;
-    if (mWindowType == InputWindowInfo::TYPE_NAVIGATION_BAR_PANEL) {
-        // Align with SurfaceFlinger changing window type from WINDOW_TYPE_DONT_SCREENSHOT to
-        // InputWindowInfo::TYPE_NAVIGATION_BAR_PANEL.
-        mPrimaryDisplayOnly = true;
-    }
+    mDontScreenShot = args.metadata.getInt32(METADATA_WINDOW_TYPE_DONT_SCREENSHOT, 0) ?
+                      true : false;
 }
 
 void Layer::onFirstRef() {
@@ -1533,7 +1530,7 @@ uint32_t Layer::getEffectiveUsage(uint32_t usage) const {
         usage |= GraphicBuffer::USAGE_CURSOR;
     }
 #ifdef QTI_DISPLAY_CONFIG_ENABLED
-    if (mPrimaryDisplayOnly) {
+    if (mDontScreenShot) {
         // This is a WINDOW_TYPE_DONT_SCREENSHOT "mask" layer which needs to be CPU-read for
         // special processing and programming of mask h/w IF the feature is supported.
         static bool rc_supported = false;
@@ -2477,7 +2474,21 @@ InputWindowInfo Layer::fillInputInfo() {
     info.frameTop = layerBounds.top;
     info.frameRight = layerBounds.right;
     info.frameBottom = layerBounds.bottom;
-
+    // validate layer bound before access
+    //layer = #1
+    //layerBounds  l = 2147483647 t = -2147483648 r = 2147483647 b = -2147483648
+    //Todo:  Need to fix at framework level.
+    if (info.frameLeft > INT16_MAX || info.frameTop > INT16_MAX ||
+        info.frameRight > INT16_MAX || info.frameBottom > INT16_MAX ||
+        info.frameLeft < INT16_MIN || info.frameTop < INT16_MIN ||
+        info.frameRight < INT16_MIN || info.frameBottom < INT16_MIN) {
+        ALOGE("Layer %s left = %d top = %d right = %d  bottom = %d", getName().c_str(),
+               info.frameLeft, info.frameTop, info.frameRight,  info.frameBottom);
+        info.frameLeft = 0;
+        info.frameTop = 0;
+        info.frameRight = 0;
+        info.frameBottom = 0;
+    }
     // Position the touchable region relative to frame screen location and restrict it to frame
     // bounds.
     info.touchableRegion = info.touchableRegion.translate(info.frameLeft, info.frameTop);
